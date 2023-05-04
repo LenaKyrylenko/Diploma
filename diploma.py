@@ -4,27 +4,38 @@ import pandas as pd # a data processing and CSV I/O library
 # Data Visualization
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from sklearn.decomposition import PCA
+import pandas as pd
+from sklearn.decomposition import PCA
+pd.options.mode.chained_assignment = None  # default='warn'
 df = pd.read_csv('./Covid Data.csv')
 # df.head()
 # df.info()
 
 #1 -жінка 0 - чоловік, 1 - такб 0 - ні
 
-df['INTUBED'] = np.where(df['INTUBED'] == 97,2, df['INTUBED'])
-df['INTUBED'] = np.where(df['INTUBED'] == 99,1, df['INTUBED'])        
+# df['INTUBED'] = np.where(df['INTUBED'] == 97,2, df['INTUBED'])
+# df['INTUBED'] = np.where(df['INTUBED'] == 99,1, df['INTUBED'])        
 df['ICU'] = np.where(df['ICU'] == 97,2, df['ICU'])
-df['ICU'] = np.where(df['ICU'] == 99,1, df['ICU'])    
-df['PREGNANT'] = np.where(df['PREGNANT'] == 97, 2, df['PREGNANT'])
-df['PREGNANT'] = np.where(df['PREGNANT'] == 98, 1, df['PREGNANT'])
-df['PNEUMONIA'] = np.where(df['PNEUMONIA'] == 99,2,df['PNEUMONIA'])
-for i in('DIABETES','COPD', 'ASTHMA', 'INMSUPR',
-       'HIPERTENSION', 'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY',
-       'RENAL_CHRONIC', 'TOBACCO'):         
-    df[i] =  np.where(df[i]== 98, 2, df[i])
+df['ICU'] = np.where(df['ICU'] == 99,1, df['ICU'])   
+def replace_values(val):
+    if 1 <= val <= 3:
+        return 1
+    elif 4 <= val <= 7:
+        return 0
+    else:
+        return val
+
+df['CLASIFFICATION_FINAL'] = df['CLASIFFICATION_FINAL'].apply(replace_values)      
+# df['PNEUMONIA'] = np.where(df['PNEUMONIA'] == 99,2,df['PNEUMONIA'])
+# for i in('DIABETES','COPD', 'ASTHMA', 'INMSUPR',
+#        'HIPERTENSION', 'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY',
+#        'RENAL_CHRONIC', 'TOBACCO'):    
+#     df =  df[(df[i] == '98')]     
+    # df[i] =  np.where(df[i]== 98, 2, df[i])
 
 
-df['DEATH'] = [2 if row=='9999-99-99' else 1 for row in df['DATE_DIED']]
+# df['DEATH'] = [2 if row=='9999-99-99' else 1 for row in df['DATE_DIED']]
 
 # список столбцов для замены
 cols_to_replace = ['USMER', 'SEX','PATIENT_TYPE', 'DEATH', 'INTUBED',
@@ -40,74 +51,103 @@ for col in cols_to_replace:
     df[col].replace(2, 0, inplace=True)
 
 
-# df.to_csv('./Covid Data.csv', index=False)
 
-#виведення 
-# for i in ('USMER', 'MEDICAL_UNIT', 'SEX', 'PATIENT_TYPE', 'DEATH', 'INTUBED',
-#        'PNEUMONIA', 'AGE', 'PREGNANT', 'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR',
-#        'HIPERTENSION', 'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY',
-#        'RENAL_CHRONIC', 'TOBACCO', 'ICU'):
-    # print(df[i].value_counts())
+num_rows = len(df)
+print('КОЛИЧЕСТВО ДО', num_rows)
 
+# удаляем строки, где значение в столбцах "A" и "B" равны "удалить"
+df = df[(df['DATE_DIED'] == '9999-99-99')]
 
-
-# вычислить корреляцию между всеми столбцами таблицы
-# correlation_matrix = df.corr()
-
-# # создать тепловую карту
-# print('correlation_matrix ', correlation_matrix) 
-# sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+# df = df[(df['PNEUMONIA'] != '99')]
+num_rows = len(df)
+print('КОЛИЧЕСТВО ПОСЛЕ', num_rows)
 
 
 
+df = df.drop(columns=["DATE_DIED", "DEATH"])
+def count_ones(column_name):
+    return (df[column_name] == 1).sum()
 
-correlations = df.corr()
-print('correlations ', correlations)
-
-print("cor colomn ",  correlations.columns)
-# получение индексов строк, где коэффициент корреляции равен 1.0
-# indices_to_drop = set()
-# for column in correlations.columns:
-#     indices = correlations.index[correlations[column] == 1.0].tolist()
-#     print('indices', indices)
-#     indices_to_drop.update(set(indices))
-
-# print('indices_to_drop ',indices_to_drop)
-# # удаление строк с найденными индексами
-# df = df.drop(df.index[indices_to_drop])
-
-# df.to_csv('./Covid Data.csv', index=False)
+pC1 = count_ones('CLASIFFICATION_FINAL')
+pC2 = len(df) - count_ones('CLASIFFICATION_FINAL')
+print("хворі = ",pC1)
+print("здорові = ",pC2)
+print(df['CLASIFFICATION_FINAL'][:100])
 
 
-# # получение коэффициентов корреляции между всеми парами столбцов
+def check_age(age):
+    if age >= 20 and age < 30:
+        return "Возраст в пределах 20-30 лет"
+    elif age >= 30 and age < 40:
+        return "Возраст в пределах 30-40 лет"
+    elif age >= 40 and age < 50:
+        return "Возраст в пределах 40-50 лет"
+    elif age >= 50 and age < 60:
+        return "Возраст в пределах 50-60 лет"
+    elif age >= 60 and age < 70:
+        return "Возраст в пределах 60-70 лет"
+    else:
+        return "Возраст вне заданных пределов"
+    
+# def p_ones_age( p_covid):
+#     count = 0 # переменная для хранения количества ячеек, содержащих значение 1
+#     for i in range(1, len(df)): # цикл по всем строкам DataFrame
+#         if df['AGE'][i] >= 20 and df['AGE'][i] <= 40 \
+#         and df['CLASIFFICATION_FINAL'][i] == 1:
+#             count += 1
+#     print("count = ",count) # вывод результата
+   
+#     return (count)/p_covid    
+# print("res ", p_ones_age(pC1))
+def p_ones(column_name, p_covid):
+    return ((df[column_name] == 1) & (df['CLASIFFICATION_FINAL'] == 1)).sum() / p_covid
+
+
+print('ІМОВІРНІСТЬ ', p_ones('DIABETES', pC1))
+# # разделение таблицы на независимые переменные (факторы) и зависимую переменную (целевую)
+# X = df.iloc[:, :-1].values
+# y = df.iloc[:, -1].values
+
+# # создание экземпляра PCA
+# pca = PCA()
+
+# # выполнение PCA на данных
+# pca.fit(X)
+
+# # получение важности признаков (столбцов)
+# feature_importances = pca.explained_variance_ratio_
+
+# # вывод важности признаков на экран
+# for i, importance in enumerate(feature_importances):
+#     print(f'Фактор {i+1}: {importance}')
+
+
 # correlations = df.corr()
 
-# # получение индексов строк, где коэффициент корреляции равен 1.0
-# indices_to_drop = set()
-# for column in correlations.columns:
-#     indices = correlations.index[correlations[column] == 1.0].tolist()
-#     print('indices', indices)
-#     indices_to_drop.update(set(indices))
+# for column in correlations:
+#     # получаем 2 наибольших значения корреляции
+#     nlargest = correlations[column].nlargest(2)
+#     # проверяем, что количество элементов в серии больше 1
+#     if len(nlargest) > 1:
+#         second_largest = nlargest.iloc[-1]
+#         print(f"biggest value in {column}:", second_largest)
+#     else:
+#         print(f"Not enough values for {column}")    
 
-# print('indices_to_drop ',indices_to_drop)
+# # определяем столбец для корреляции
+# corr_column = 'CLASIFFICATION_FINAL'
 
-# # удаление строк с найденными индексами
-# for index in indices_to_drop:
-#     if index in df.index:
-#         df = df.drop(index)
-#         print('index ', index)
-# df.to_csv('./Covid Data.csv', index=False)
-correlations = df.corr()
+# # проходим по всем столбцам и вычисляем корреляцию с выбранным столбцом
+# for column_name, column_data in df.iteritems():
+#     if column_name != corr_column: 
+#         corr = column_data.corr(df[corr_column])
+#         print(f"Корреляция между столбцами '{column_name}' и '{corr_column}': {corr}")
 
-print(correlations)
-for column in correlations:
-    second_largest = correlations[column].nlargest(2).iloc[-1]
-    print(f"biggest value in {column}:", second_largest)
 
-print(second_largest)
-# print('correlations.max', correlations.max())
-# print(' correlations.min', correlations.min())
-# correlation = df['PATIENT_TYPE'].corr(df['CARDIOVASCULAR'])
 
-# print('PATIENT_TYPE и CARDIOVASCULAR', correlation)
-# sns.countplot(x= y)
+
+
+# print(second_largest)
+# print('correlations ', correlations)
+
+# print("cor colomn ",  correlations.columns)

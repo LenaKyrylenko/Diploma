@@ -5,10 +5,9 @@ import pandas as pd # a data processing and CSV I/O library
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-import pandas as pd
-from sklearn.decomposition import PCA
-pd.options.mode.chained_assignment = None  # default='warn'
-df = pd.read_csv('./Covid Data.csv')
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from scipy.stats import entropy
 # df.head()
 # df.info()
 
@@ -16,8 +15,10 @@ df = pd.read_csv('./Covid Data.csv')
 
 # df['INTUBED'] = np.where(df['INTUBED'] == 97,2, df['INTUBED'])
 # df['INTUBED'] = np.where(df['INTUBED'] == 99,1, df['INTUBED'])        
-df['ICU'] = np.where(df['ICU'] == 97,2, df['ICU'])
-df['ICU'] = np.where(df['ICU'] == 99,1, df['ICU'])   
+# df['ICU'] = np.where(df['ICU'] == 97,2, df['ICU'])
+# df['ICU'] = np.where(df['ICU'] == 99,1, df['ICU'])   
+
+
 def replace_values(val):
     if 1 <= val <= 3:
         return 1
@@ -26,125 +27,332 @@ def replace_values(val):
     else:
         return val
 
-df['CLASIFFICATION_FINAL'] = df['CLASIFFICATION_FINAL'].apply(replace_values)      
-# df['PNEUMONIA'] = np.where(df['PNEUMONIA'] == 99,2,df['PNEUMONIA'])
-# for i in('DIABETES','COPD', 'ASTHMA', 'INMSUPR',
-#        'HIPERTENSION', 'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY',
-#        'RENAL_CHRONIC', 'TOBACCO'):    
-#     df =  df[(df[i] == '98')]     
-    # df[i] =  np.where(df[i]== 98, 2, df[i])
+def clear_data(df):
+    #заменяем значение в столбце классификация 
+    df['CLASIFFICATION_FINAL'] = df['CLASIFFICATION_FINAL'].apply(replace_values)      
+    # список столбцов для замены
+    cols_to_replace = ['USMER', 'SEX','PATIENT_TYPE',
+                       'PNEUMONIA', 
+                       'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR', 'HIPERTENSION',
+                       'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY' , 'RENAL_CHRONIC',
+                       'TOBACCO',
+                       ]
+    # заменить значения "2" на "0" в указанных столбцах
+    for col in cols_to_replace:
+        df[col].replace(2, 0, inplace=True)
+    num_rows = len(df)
+    # print('КОЛИЧЕСТВО ДО ', num_rows)
+    #удаление рядков с 
+    # df = df.loc[df['DATE_DIED'] == '9999-99-99']
+    # num_rows = len(df)
+    # print('КОЛИЧЕСТВО ПОСЛЕ', num_rows)
+    #удаление столбцов о дате сметри и смерти
+    # df = df.drop(columns=["DATE_DIED", "PREGNANT", "INTUBED", "ICU"])
+    for col in df.columns:
+        condition = df[(df[col] == 97) | (df[col] == 98) | (df[col] == 99)]
+        df.drop(condition.index,inplace=True)
+    df.to_csv('updated_table.csv', index=False)
 
 
-# df['DEATH'] = [2 if row=='9999-99-99' else 1 for row in df['DATE_DIED']]
+# def shannon_entropy(labels):
+#     """Вычисляет информационную энтропию для массива меток."""
+#     n_labels = len(labels)
+#     print("n label ", n_labels)
+#     if n_labels <= 1:
+#         return 0
+#     counts = np.bincount(labels)
+#     print("count ", counts)
+#     probs = counts / n_labels
+#     print("probs ", probs)
+#     n_classes = np.count_nonzero(probs)
+#     if n_classes <= 1:
+#         return 0
+#     ent = 0.
+#     # Вычисляем энтропию по формуле Шеннона
+#     for i in probs:
+#         ent -= i * np.log2(i)
+#     return ent
 
-# список столбцов для замены
-cols_to_replace = ['USMER', 'SEX','PATIENT_TYPE', 'DEATH', 'INTUBED',
-                   'PNEUMONIA', 'PREGNANT', 
-                   'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR', 'HIPERTENSION',
-                   'OTHER_DISEASE', 'CARDIOVASCULAR', 'OBESITY' , 'RENAL_CHRONIC',
-                   
-                   'TOBACCO', 'ICU'
-                   ]
+def information_gain(feature, labels):
+    """Вычисляет информационный выигрыш для данного признака."""
+    # Разбиваем на две группы
+    classes = np.unique(labels)
+    n_instances = len(labels)
+    ent = shannon_entropy(labels)
+    new_ent = 0.
+    for cl in classes:
+        mask = feature == cl
+        sub_labels = labels[mask]
+        sub_ent = shannon_entropy(sub_labels)
+        new_ent += len(sub_labels) / n_instances * sub_ent
+    # Вычисляем информационный выигрыш
+    info_gain = ent - new_ent
+    return info_gain
 
-# заменить значения "2" на "0" в указанных столбцах
-for col in cols_to_replace:
-    df[col].replace(2, 0, inplace=True)
+# Загрузим таблицу
+#МЕТОД ШЕННОНА
 
+def method_shennon():
+# Выделим признаки и метки
+    features = df.drop('CLASIFFICATION_FINAL', axis=1)
+    labels = df['CLASIFFICATION_FINAL']
+    
+    # Вычислим информационный выигрыш для каждого признака
+    info_gains = []
+    for col in features.columns:
+        feature = features[col]
+        info_gain = information_gain(feature, labels)
+        
+        info_gains.append(info_gain)
+    # Отсортируем признаки по убыванию информационного выигрыша
+    sorted_idx = np.argsort(info_gains)[::-1]
 
+    sorted_features = features.columns[sorted_idx]
 
-num_rows = len(df)
-print('КОЛИЧЕСТВО ДО', num_rows)
+    # Выведем признаки и их информационный выигрыш
+    for feature in sorted_features:
+        print("признак: {:<15} \t информативность: {}".format(feature,information_gain(features[feature], labels)))
 
-# удаляем строки, где значение в столбцах "A" и "B" равны "удалить"
-df = df[(df['DATE_DIED'] == '9999-99-99')]
+def shannon_entropy(data, feature):
+    # вычисление общего количества объектов
+    total_count = data.shape[0]
+    # вычисление количества уникальных значений признака
+    unique_vals = data[feature].unique()
+    # вычисление количества объектов для каждого уникального значения признака
+    val_counts = data[feature].value_counts()
+    # вычисление вероятности каждого уникального значения признака
+    val_probs = val_counts / total_count
+    # вычисление меры Шеннона
+    shannon = -np.sum(val_probs * np.log2(val_probs))
+    return shannon
 
-# df = df[(df['PNEUMONIA'] != '99')]
-num_rows = len(df)
-print('КОЛИЧЕСТВО ПОСЛЕ', num_rows)
-
-
-
-df = df.drop(columns=["DATE_DIED", "DEATH"])
+def method_shennon2(df):
+# Выделим признаки и метки
+    target = df['CLASIFFICATION_FINAL']
+    features = df.drop('CLASIFFICATION_FINAL', axis=1)
+    
+    for col in features.columns:
+        feature = features[col]
+       
+    # features = ['Age', 'Ширина почки', 'Толщина', 'Поренхима','Ускорение']
+        age_entropy = shannon_entropy(df, col)
+        
+        print("Entropy of ", col, " : ", age_entropy)
+    # features = df.drop('CLASIFFICATION_FINAL', axis=1)
+    # labels = df['CLASIFFICATION_FINAL']
+    
+    # Вычислим информационный выигрыш для каждого признака
+    
 def count_ones(column_name):
     return (df[column_name] == 1).sum()
 
+def entropy(y):
+    _, counts = np.unique(y, return_counts=True)
+    probs = counts / len(y)
+    return -np.sum(probs * np.log2(probs))
+
+def feature_information_gain(X, y, feature):
+    pivot_table = pd.pivot_table(
+        pd.DataFrame({'X': X, 'y': y}), 
+        values='X', 
+        index='y', 
+        aggfunc=len
+    ).fillna(0)
+    
+    values = pivot_table.index.tolist()
+    counts = pivot_table['X'].tolist()
+    total_count = sum(counts)
+    
+    feature_entropy = sum(
+        [(counts[i] / total_count) * entropy(X[y == values[i]]) 
+         for i in range(len(values))]
+    )
+    
+    info_gain = entropy(X) - feature_entropy
+    return info_gain
+
+
+# target = 'Длина почки'
+# features = ['Age', 'Ширина почки', 'Толщина', 'Поренхима','Ускорение']
+# функция для расчета энтропии
+def entropy(target_col):
+    elements, counts = np.unique(target_col, return_counts = True)
+    entropy = np.sum([(-counts[i]/np.sum(counts)) * np.log2(counts[i]/np.sum(counts)) for i in range(len(elements))])
+    return entropy
+
+# функция для расчета информативности признака
+def information_gain(data, feature, target):
+    total_entropy = entropy(data[target])
+    values, counts = np.unique(data[feature], return_counts=True)
+    weighted_entropy = np.sum([(counts[i]/np.sum(counts)) * entropy(data.where(data[feature]==values[i]).dropna()[target]) for i in range(len(values))])
+    info_gain = total_entropy - weighted_entropy
+    return info_gain
+
+# pd.options.mode.chained_assignment = None  # default='warn'
+# df = pd.read_excel('data1.xlsx')
+df = pd.read_csv('updated_table.csv')
+scaler = StandardScaler()
+    
+    # нормализуем данные
+normalized_data = scaler.fit_transform(df)
+column_names = df.columns.tolist()
+    # создаем DataFrame из нормализованных данных
+normalized_df = pd.DataFrame(normalized_data, columns=column_names)
+
+# clear_data(df)
+# for feature in features:
+#     info_gain = feature_information_gain(df[feature], df[target], feature)
+#     print(f'{feature}: {info_gain}')
+def check_shennon():    
+        # список всех признаков, за исключением целевой переменной
+    features = list(df.columns[:-1])
+    
+    # создаем словарь, чтобы хранить информативность каждого признака
+    info_gain_dict = {}
+    
+    # расчет информативности для каждого признака
+    for feature in features:
+        ig = information_gain(df, feature, 'CLASIFFICATION_FINAL')
+        info_gain_dict[feature] = ig
+    
+    # выводим значения информативности каждого признака
+    for feature, ig in info_gain_dict.items():
+        print(f'Information Gain for {feature}: {ig}')
+    age_entropy = shannon_entropy(df, 'Age')
+    print("Entropy of age: ", age_entropy)
+    age_entropy = shannon_entropy(df, 'Длина почки')
+    print("Entropy of Длина почки: ", age_entropy)
+    age_entropy = shannon_entropy(df, 'Ширина почки')
+    print("Entropy of Ширина почки: ", age_entropy)
+    age_entropy = shannon_entropy(df, 'Толщина')
+    print("Entropy of Толщина: ", age_entropy)
+    age_entropy = shannon_entropy(df, 'Поренхима')
+    print("Entropy of Поренхима: ", age_entropy)
+    age_entropy = shannon_entropy(df, 'Ускорение')
+    print("Entropy of Ускорение: ", age_entropy)
+    
+# clear_data(df)
+# method_shennon()
+method_shennon2(normalized_df)
+print()
+# num_rows = len(df)
+# print('КОЛИЧЕСТВО ', num_rows)
 pC1 = count_ones('CLASIFFICATION_FINAL')
 pC2 = len(df) - count_ones('CLASIFFICATION_FINAL')
 print("хворі = ",pC1)
 print("здорові = ",pC2)
-print(df['CLASIFFICATION_FINAL'][:100])
 
-
-def check_age(age):
+def check_age(age,p_covid, pC1):
     if age >= 20 and age < 30:
-        return "Возраст в пределах 20-30 лет"
+        return  p_ones_age(20,30,p_covid,pC1)
     elif age >= 30 and age < 40:
-        return "Возраст в пределах 30-40 лет"
+        return  p_ones_age(30,40,p_covid,pC1)
     elif age >= 40 and age < 50:
-        return "Возраст в пределах 40-50 лет"
+        return  p_ones_age(40,50,p_covid,pC1)
     elif age >= 50 and age < 60:
-        return "Возраст в пределах 50-60 лет"
+        return  p_ones_age(50,60,p_covid,pC1)
     elif age >= 60 and age < 70:
-        return "Возраст в пределах 60-70 лет"
+        return  p_ones_age(60,70,p_covid,pC1)
     else:
         return "Возраст вне заданных пределов"
     
-# def p_ones_age( p_covid):
-#     count = 0 # переменная для хранения количества ячеек, содержащих значение 1
-#     for i in range(1, len(df)): # цикл по всем строкам DataFrame
-#         if df['AGE'][i] >= 20 and df['AGE'][i] <= 40 \
-#         and df['CLASIFFICATION_FINAL'][i] == 1:
-#             count += 1
-#     print("count = ",count) # вывод результата
-   
-#     return (count)/p_covid    
-# print("res ", p_ones_age(pC1))
+def p_ones_age(age_from, age_up_to,  p_covid,pc1):
+    count = 0
+    return ((df['AGE'] >= age_from) &(df['AGE'] <= age_up_to) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+       
 def p_ones(column_name, p_covid):
     return ((df[column_name] == 1) & (df['CLASIFFICATION_FINAL'] == 1)).sum() / p_covid
 
 
-print('ІМОВІРНІСТЬ ', p_ones('DIABETES', pC1))
-# # разделение таблицы на независимые переменные (факторы) и зависимую переменную (целевую)
-# X = df.iloc[:, :-1].values
-# y = df.iloc[:, -1].values
+def calc(usmer = 1, medical_unit = 2, sex = 1, patient_type = 1,
+          intubed = 1, pneumonia = 1, age = 30, diabetes = 0, copd = 0, astma = 0, tobacco = 0,pc1 = 1,  p_covid=pC1):
+    # res_usmer =  ((df['USMER'] == usmer) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+    res_sex =  (((df['SEX'] == sex) & (df['CLASIFFICATION_FINAL'] == pc1)).sum()) / p_covid
+    # res_inubed = ((df['INTUBED'] == intubed) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+    res_pneumonia = ((df['PNEUMONIA'] == pneumonia) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+    res_age = check_age(age,p_covid, pc1)
+    res_diabetes = ((df['DIABETES'] == diabetes) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+    res_copd = ((df['COPD'] == copd) & (df['CLASIFFICATION_FINAL'] ==pc1)).sum() / p_covid
+    res_astma = ((df['ASTHMA'] == astma) & (df['CLASIFFICATION_FINAL'] == pc1)).sum() / p_covid
+    res_tobacco = ((df['TOBACCO'] == tobacco) & (df['CLASIFFICATION_FINAL'] ==pc1)).sum() / p_covid
+    resultPC1 =  res_sex  *res_pneumonia*res_age * res_diabetes * res_copd * res_astma * res_tobacco
+    
+    print("res_sex = ", res_sex)
+    # print("res_inubed = ", res_inubed)
+    print("res_pneumonia = ", res_pneumonia)
+    print("res_age = ", res_age)
+    print("res_diabetes = ", res_diabetes)
+    print("res_copd = ", res_copd)
+    print("res_astma = ", res_copd)
+    print("res_tobacco = ", res_copd)
+    
+    return  resultPC1
 
-# # создание экземпляра PCA
-# pca = PCA()
+print("Вхідні дані: \nsex = 1,intubed = 1, pneumonia = 1, age = 30, diabetes = 0, copd = 0, astma = 0, tobacco = 0")
+print("імовірність захворіти = ",calc(pc1 = 1))
+print("імовірність здоровий = ",calc(p_covid=pC2, pc1 = 0))
 
-# # выполнение PCA на данных
-# pca.fit(X)
-
-# # получение важности признаков (столбцов)
-# feature_importances = pca.explained_variance_ratio_
-
-# # вывод важности признаков на экран
-# for i, importance in enumerate(feature_importances):
-#     print(f'Фактор {i+1}: {importance}')
-
-
-# correlations = df.corr()
-
-# for column in correlations:
-#     # получаем 2 наибольших значения корреляции
-#     nlargest = correlations[column].nlargest(2)
-#     # проверяем, что количество элементов в серии больше 1
-#     if len(nlargest) > 1:
-#         second_largest = nlargest.iloc[-1]
-#         print(f"biggest value in {column}:", second_largest)
-#     else:
-#         print(f"Not enough values for {column}")    
-
-# # определяем столбец для корреляции
-# corr_column = 'CLASIFFICATION_FINAL'
-
-# # проходим по всем столбцам и вычисляем корреляцию с выбранным столбцом
-# for column_name, column_data in df.iteritems():
-#     if column_name != corr_column: 
-#         corr = column_data.corr(df[corr_column])
-#         print(f"Корреляция между столбцами '{column_name}' и '{corr_column}': {corr}")
+    # features = df.drop('CLASIFFICATION_FINAL', axis=1)
+    # labels = df['CLASIFFICATION_FINAL']
+    
+    # # Вычислим информационный выигрыш для каждого признака
+    # info_gains = []
+    # for col in features.columns:
+    #     feature = features[col]
+    #     info_gain = information_gain(feature, labels)
+    #     info_gains.append(info_gain)
+    
+    # # Отсортируем признаки по убыванию информационного выигрыша
+    # sorted_idx = np.argsort(info_gains)[::-1]
+    # sorted_features = features.columns[sorted_idx]
+    
+    # # Выведем признаки и их информационный выигрыш
+    # for feature in sorted_features:
+    #     print("признак: {:<15} \t информативность: {:.5f}".format(feature,information_gain(features[feature], labels)))
 
 
+# method_kylbaka(df)
 
+# print(correlation(df))
+def correlation2(df):
+    # создаем объект StandardScaler
+    scaler = StandardScaler()
+    
+    # нормализуем данные
+    normalized_data = scaler.fit_transform(df)
+    column_names = df.columns.tolist()
+    # создаем DataFrame из нормализованных данных
+    normalized_df = pd.DataFrame(normalized_data, columns=column_names)
+    
+    # находим корреляцию
+    # corr_matrix = normalized_df.corr()
+    correlations = normalized_df.corr()
+    
+    for column in correlations:
+        # получаем 2 наибольших значения корреляции
+        nlargest = correlations[column].nlargest(2)
+        nsmallest = correlations[column].nsmallest(1)
+        # print("nsmallest ", nsmallest)
+        # проверяем, что количество элементов в серии больше 1
+        if len(nlargest) > 1:
+            second_largest = nlargest.iloc[-1]
+            
+            print("{:<15} {:.5} {:.5}".format(column, second_largest,nsmallest.item()))
+        else:
+            print(f"Not enough values for {column}")    
+    
+    # определяем столбец для корреляции
+    corr_column = 'CLASIFFICATION_FINAL'
+    
+    # проходим по всем столбцам и вычисляем корреляцию с выбранным столбцом
+    for column_name, column_data in normalized_df.iteritems():
+        if column_name != corr_column: 
+            corr = column_data.corr(df[corr_column])
+            print(f"Корреляция между столбцами '{column_name}' и '{corr_column}': {corr}")
+    
+correlation2(df)
+# print("Кореляція")
+# correlation2()
 
 
 # print(second_largest)
